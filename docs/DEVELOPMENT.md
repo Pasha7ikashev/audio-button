@@ -68,6 +68,10 @@ Microphone and Screen & System Audio Recording permissions are required by the
 capture APIs. No screen images are saved. An ad-hoc rebuild changes the code
 signature, so macOS may request capture permissions again. The saved Groq key is unaffected.
 After changing capture permissions, quit and reopen the app if necessary.
+macOS may retain the old code requirement while showing its toggle as enabled.
+If toggling and reopening fails after a rebuild, remove only Audio Button from
+Screen & System Audio Recording and add the installed app again, followed by
+Quit & Reopen. This refreshes the signature through the normal Settings UI.
 
 The first launch has two setup steps: the user's own Groq key, then their
 recordings folder. Existing installations retain their configuration. Settings

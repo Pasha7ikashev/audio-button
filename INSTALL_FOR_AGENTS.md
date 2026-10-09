@@ -23,6 +23,14 @@ If release installation is unsuitable, clone this repository into a separate pro
 
 No dependencies, virtual audio drivers, or Python environment are needed. A source build is signed locally. Updates may cause macOS to request permissions again. The saved Groq key does not require a system password prompt.
 
+## Capture permission after an update
+
+An ad-hoc rebuild changes the app signature. macOS can show capture access as
+On while still rejecting the new signature. If quitting and reopening does not
+help, remove only Audio Button from Screen & System Audio Recording, add the
+installed Audio Button.app again, then choose Quit & Reopen. Select the app
+in its parent Applications folder. Preserve all other apps' permissions.
+
 ## Verify
 
 - Clicking the menu bar microphone opens the recording panel.
