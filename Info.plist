@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleExecutable</key><string>AudioButton</string>
+    <key>CFBundleIdentifier</key><string>local.pasha.AudioButton</string>
+    <key>CFBundleName</key><string>Audio Button</string>
+    <key>CFBundleDisplayName</key><string>Audio Button</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.1.0</string>
+    <key>CFBundleVersion</key><string>3</string>
+    <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Record your voice together with Mac audio. Recordings are saved on this Mac.</string>
+    <key>NSAudioCaptureUsageDescription</key><string>Record app audio together with your microphone. Recordings are saved on this Mac.</string>
+    <key>NSScreenCaptureUsageDescription</key><string>This permission is required by the built-in system audio capture API. No screen images are saved.</string>
+    <key>NSHighResolutionCapable</key><true/>
+</dict></plist>
