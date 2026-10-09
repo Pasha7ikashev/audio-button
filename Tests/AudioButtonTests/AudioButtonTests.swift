@@ -273,6 +273,25 @@ final class AudioButtonTests: XCTestCase {
         catch { XCTAssertEqual(MockGroqProtocol.requests, 0) }
     }
 
+    func testLocalKeyPersistsWithPrivatePermissions() throws {
+        let url = root.appendingPathComponent("app-data/groq-key")
+        XCTAssertFalse(GroqKeyStore.exists(at: url))
+        try XCTAssertTrue(try GroqKeyStore.read(at: url) == nil)
+        try GroqKeyStore.save(" fake-local-key-one \n", to: url)
+        XCTAssertTrue(GroqKeyStore.exists(at: url))
+        try XCTAssertEqual(try GroqKeyStore.read(at: url), "fake-local-key-one")
+        let manager = FileManager.default
+        let fileAttributes = try manager.attributesOfItem(atPath: url.path)
+        let folderAttributes = try manager.attributesOfItem(atPath: url.deletingLastPathComponent().path)
+        XCTAssertEqual((fileAttributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        XCTAssertEqual((folderAttributes[.posixPermissions] as? NSNumber)?.intValue, 0o700)
+        try GroqKeyStore.save("fake-local-key-two", to: url)
+        try XCTAssertEqual(try GroqKeyStore.read(at: url), "fake-local-key-two")
+        XCTAssertThrowsError(try GroqKeyStore.save("invalid key", to: url))
+        try XCTAssertEqual(try GroqKeyStore.read(at: url), "fake-local-key-two")
+        try XCTAssertEqual(try manager.contentsOfDirectory(atPath: url.deletingLastPathComponent().path), ["groq-key"])
+    }
+
     func testMetersUseSeparateRealSourceLevels() throws {
         let session = try RecordingSession(root: root)
         try session.append(tone(440, seconds: 0.1), timestamp: 1, microphone: true)
@@ -323,7 +342,8 @@ final class MockGroqProtocol: URLProtocol, @unchecked Sendable {
             ("resume without duplicate upload", { try await tests.testResumeUsesSavedResponseWithoutUploadingAgain() }),
             ("latest ten recordings and transcripts", { try tests.testRecentRecordingsAreLimitedAndPairedWithText() }),
             ("key verification and errors", { try await tests.testKeyVerificationUsesAuthenticationAndFriendlyErrors() }),
-            ("independent microphone and Mac audio meters", { try tests.testMetersUseSeparateRealSourceLevels() })
+            ("independent microphone and Mac audio meters", { try tests.testMetersUseSeparateRealSourceLevels() }),
+            ("persistent private key file without system prompts", { try tests.testLocalKeyPersistsWithPrivatePermissions() })
         ]
         for (name, run) in cases {
             let before = assertionFailures

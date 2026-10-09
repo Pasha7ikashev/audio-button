@@ -481,7 +481,8 @@ enum AudioButtonMain {
         updateIcon()
     }
     @objc private func openPermissions() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+        let section = captureError?.contains("microphone") == true ? "Privacy_Microphone" : "Privacy_ScreenCapture"
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?" + section)!)
     }
     @objc private func help() {
         showAlert(title: "Audio Button", message:
@@ -572,8 +573,7 @@ enum AudioButtonMain {
         updateIcon()
         Task { @MainActor in
             do {
-                // Keychain may wait for a macOS password prompt after an update.
-                // Keep the recording button responsive while it waits.
+                // Local credential I/O stays away from the recording interface.
                 guard let key = try await Task.detached(priority: .userInitiated, operation: {
                     try GroqKeyStore.read()
                 }).value else {

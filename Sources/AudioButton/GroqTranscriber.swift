@@ -1,53 +1,58 @@
 import AVFoundation
 import Foundation
-import Security
-import LocalAuthentication
+import Darwin
 
 enum GroqKeyStore {
-    private static let identity: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "local.pasha.AudioButton") + ".Groq",
-        kSecAttrAccount as String: "api-key"
-    ]
-
-    static func exists() -> Bool {
-        var query = identity
-        let context = LAContext()
-        context.interactionNotAllowed = true
-        query[kSecUseAuthenticationContext as String] = context
-        let status = SecItemCopyMatching(query as CFDictionary, nil)
-        return status == errSecSuccess || status == errSecInteractionNotAllowed
+    static var storageURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "local.pasha.AudioButton", isDirectory: true)
+            .appendingPathComponent("groq-key")
     }
 
-    static func read() throws -> String? {
-        var query = identity
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status == errSecItemNotFound { return nil }
-        guard status == errSecSuccess, let data = item as? Data else {
-            throw RecorderError.message("Could not read the Groq API key from Keychain (\(status)).")
+    static func exists(at url: URL = storageURL) -> Bool {
+        (try? read(at: url)) != nil
+    }
+
+    static func read(at url: URL = storageURL) throws -> String? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        do {
+            let key = try String(contentsOf: url, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty, !key.contains(where: { $0.isWhitespace }) else {
+                throw RecorderError.message("The saved Groq key is invalid. Paste it again in Settings.")
+            }
+            return key
+        } catch {
+            throw RecorderError.message("Could not read the saved Groq key. Paste it again in Settings.")
         }
-        return String(data: data, encoding: .utf8)
     }
 
-    static func save(_ value: String) throws {
+    static func save(_ value: String, to url: URL = storageURL) throws {
         let key = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, !key.contains(where: { $0.isWhitespace }) else {
             throw RecorderError.message("Paste your Groq API key without spaces.")
         }
-        let data = Data(key.utf8)
-        var status = SecItemUpdate(identity as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        if status == errSecItemNotFound {
-            var item = identity
-            item[kSecValueData as String] = data
-            item[kSecAttrLabel as String] = "Audio Button — Groq API key"
-            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            status = SecItemAdd(item as CFDictionary, nil)
-        }
-        guard status == errSecSuccess else {
-            throw RecorderError.message("Could not save the API key in Keychain (\(status)).")
+        let manager = FileManager.default
+        let directory = url.deletingLastPathComponent()
+        let temporary = directory.appendingPathComponent(".groq-key-" + UUID().uuidString)
+        defer { try? manager.removeItem(at: temporary) }
+        do {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            // Create with private permissions before writing any credential bytes.
+            let descriptor = Darwin.open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(0o600))
+            guard descriptor >= 0 else { throw RecorderError.message("Could not create the key file.") }
+            let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            do {
+                try handle.write(contentsOf: Data(key.utf8))
+                try handle.synchronize()
+                try handle.close()
+            } catch { try? handle.close(); throw error }
+            guard Darwin.rename(temporary.path, url.path) == 0 else {
+                throw RecorderError.message("Could not replace the key file.")
+            }
+        } catch {
+            throw RecorderError.message("Could not save the Groq key on this Mac. Please try again.")
         }
     }
 }

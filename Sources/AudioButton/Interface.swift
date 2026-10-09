@@ -95,7 +95,9 @@ struct RecordingPanel: View {
                     } else if model.phase == .starting || model.phase == .saving {
                         ProgressView().controlSize(.small)
                     } else {
-                        Text("Mic + Mac audio").font(.system(size: 11)).opacity(0.8)
+                        Text(model.microphoneEnabled && model.macAudioEnabled ? "Mic + Mac audio"
+                            : model.microphoneEnabled ? "Microphone" : "Mac audio")
+                            .font(.system(size: 11)).opacity(0.8)
                     }
                 }.font(.system(size: 14)).padding(.horizontal, 16).frame(height: 48)
                 .foregroundStyle(.white)
@@ -329,7 +331,7 @@ private struct SetupView: View {
                         .accessibilityLabel("Groq API key")
                     HStack(spacing: 5) {
                         if model.keyConfigured { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
-                        Text(model.keyConfigured ? "Your key is saved securely." : "Free plan available. Usage limits apply.")
+                        Text(model.keyConfigured ? "Your key is saved on this Mac." : "Free plan available. Usage limits apply.")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     if !firstRun {

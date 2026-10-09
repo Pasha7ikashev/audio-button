@@ -39,11 +39,14 @@ chunk is compressed to 128 kbps to remain below the upload limit. Completed
 responses are cached, so a retry can resume without uploading them again.
 Network errors, account limits, or a rejected key preserve the audio.
 
-The API key is stored in macOS Keychain, scoped to the app's bundle identifier.
-Checking whether a key exists does not trigger an authentication prompt. Key
-reads and writes run away from the main thread so a macOS Keychain prompt does
-not freeze the recording interface. Key verification uses Groq's models endpoint
-before saving; error messages never include server bodies or credentials.
+The API key is saved once in a plaintext file under
+`~/Library/Application Support/local.pasha.AudioButton/groq-key` (mode 0600;
+its dedicated folder is mode 0700). It remains available after relaunches and
+updates without a Keychain/password prompt. The file is never bundled with the
+app or placed in the repository. Other bundle identifiers use separate folders.
+This protects it from other local users, not from processes running as the same
+Mac user. Key verification uses Groq's models endpoint before saving; error
+messages never include server bodies or credentials. Key replacement is atomic.
 
 ## Building and permissions
 
@@ -63,7 +66,7 @@ default is ad-hoc signing. The release is not notarized.
 
 Microphone and Screen & System Audio Recording permissions are required by the
 capture APIs. No screen images are saved. An ad-hoc rebuild changes the code
-signature, so macOS may request these permissions and Keychain access again.
+signature, so macOS may request capture permissions again. The saved Groq key is unaffected.
 After changing capture permissions, quit and reopen the app if necessary.
 
 The first launch has two setup steps: the user's own Groq key, then their
@@ -79,7 +82,7 @@ open only on request once setup is complete.
 - API multipart requests, chunk boundaries, overlap deduplication, successful
   transcription, rejected keys, and resuming cached responses.
 - The latest ten recordings and transcript pairing.
-- Key verification, friendly errors, and credential privacy.
+- Key verification, friendly errors, credential privacy, and private local key storage.
 - Independent PCM source levels and meter normalization.
 
 HTTP checks use mocked responses. Live recording requires macOS permissions;

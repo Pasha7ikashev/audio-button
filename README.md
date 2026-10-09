@@ -14,7 +14,7 @@ This beta is not notarized. macOS may ask you to allow it in **System Settings â
 1. Click **Get a free Groq key**, sign up, create an API key, and paste it into the app.
 2. Choose where to save your files. You're ready.
 
-Groq offers a [free plan with usage limits](https://console.groq.com/docs/rate-limits). Audio is sent to Groq for transcription. Your key stays in macOS Keychain; recordings and transcripts stay in your chosen folder.
+Groq offers a [free plan with usage limits](https://console.groq.com/docs/rate-limits). Audio is sent to Groq for transcription. Your key is saved once in a local file accessible only to your Mac user; recordings and transcripts stay in your chosen folder.
 
 ## Use
 
