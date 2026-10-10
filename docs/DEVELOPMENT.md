@@ -77,6 +77,19 @@ The first launch has two setup steps: the user's own Groq key, then their
 recordings folder. Existing installations retain their configuration. Settings
 open only on request once setup is complete.
 
+## Agent handoff
+
+Share with agent builds a short agent task containing the transcript's
+absolute path, home-relative path when applicable, and exact filename. It does
+not read or embed the transcript body. Paths are quoted as JSON strings to
+preserve spaces, Unicode, and quotes without shell interpolation.
+
+The task suggests a low-cost subagent when available. The reader saves a cleaned
+transcript to a new Markdown file, preserves the original, and returns a concise
+summary with decisions, tasks, open questions, and the output path. Filename
+search is a fallback for moved files. Agents without access to the Mac must ask
+for an attachment. The Audio/Text copy buttons and context menus retain path copying.
+
 ## Checks
 
 `test.sh` is a standalone Swift runner that works without XCTest. It checks:

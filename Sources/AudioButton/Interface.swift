@@ -49,9 +49,16 @@ struct MicrophoneChoice: Identifiable {
     private var copySequence = 0
 
     func copy(_ url: URL, label: String) {
+        copyToClipboard(url.path, feedback: "\(label) path copied")
+    }
+
+    func copyAgentPrompt(_ transcript: URL) {
+        copyToClipboard(AgentHandoffPrompt.make(for: transcript), feedback: "Agent prompt copied")
+    }
+
+    private func copyToClipboard(_ text: String, feedback: String) {
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url.path, forType: .string)
-        copied = "\(label) path copied"
+        copied = NSPasteboard.general.setString(text, forType: .string) ? feedback : "Could not copy. Try again."
         copySequence += 1
         let sequence = copySequence
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
@@ -178,7 +185,7 @@ struct RecordingPanel: View {
                                 RecordingRow(recording: recording, model: model)
                             }
                         }
-                    }.frame(height: min(CGFloat(model.recordings.count) * 64, 350))
+                    }.frame(height: min(CGFloat(model.recordings.count) * 80, 350))
                 }
             }
             Divider()
@@ -231,18 +238,29 @@ private struct RecordingRow: View {
     let recording: RecentRecording
     @ObservedObject var model: AppViewModel
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
                 Text(timestamp)
                     .font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Spacer(minLength: 0)
+                FileButtons(title: "Audio", symbol: "play.fill", url: recording.audio, model: model)
+                FileButtons(title: "Text", symbol: "doc.text", url: recording.transcript, model: model)
+            }
+            HStack {
                 Text(model.transcribingPath == recording.audio.path ? "Making transcript…"
                     : recording.transcript != nil ? "Transcript ready" : "Audio saved")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button {
+                    if let transcript = recording.transcript { model.copyAgentPrompt(transcript) }
+                } label: {
+                    Label("Share with agent", systemImage: "square.and.arrow.up")
+                }.buttonStyle(.bordered).controlSize(.small).tint(.indigo)
+                    .disabled(recording.transcript == nil)
+                    .help("Copy agent prompt with transcript file link")
+                    .accessibilityLabel("Share with agent")
             }
-            Spacer(minLength: 0)
-            FileButtons(title: "Audio", symbol: "play.fill", url: recording.audio, model: model)
-            FileButtons(title: "Text", symbol: "doc.text", url: recording.transcript, model: model)
-        }.padding(.horizontal, 12).frame(height: 58)
+        }.padding(.horizontal, 12).frame(height: 74)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
             .help(recording.audio.lastPathComponent)
     }
@@ -275,6 +293,11 @@ private struct FileButtons: View {
                 .accessibilityLabel("Copy \(title.lowercased()) path")
         }.foregroundStyle(url != nil ? Color.primary : Color.secondary.opacity(0.4))
             .disabled(url == nil)
+            .contextMenu {
+                if let url {
+                    Button("Copy \(title.lowercased()) path") { model.copy(url, label: title) }
+                }
+            }
     }
 }
 
