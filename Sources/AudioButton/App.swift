@@ -516,7 +516,7 @@ enum AudioButtonMain {
     }
     @objc private func help() {
         showAlert(title: "Audio Button", message:
-            "Click the microphone in your menu bar, then Start recording.\nStop & save saves audio and automatically creates a transcript.\n\nAudio plays a recording. Text opens its transcript. Share with agent copies a prompt with the transcript file link. The copy icons copy file paths.\n\nUse headphones for a cleaner recording.")
+            "Click the microphone in your menu bar, then Start recording.\nStop & save saves audio and automatically creates a transcript.\n\nShare with agent copies a prompt with the transcript file link. Show in Finder reveals the audio and transcript together.\n\nUse headphones for a cleaner recording.")
     }
     @objc private func recover() {
         guard state == .idle else { return }

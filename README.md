@@ -21,9 +21,9 @@ Groq offers a [free plan with usage limits](https://console.groq.com/docs/rate-l
 Click the microphone in the menu bar → **Start recording** → **Stop & save**.
 On your first recording, allow microphone and screen/system audio access. No video is recorded. Headphones work; they also avoid microphone echo from speakers.
 
-The panel shows your **10 latest recordings**. **Audio** plays a recording and **Text** opens its transcript. **Share with agent** copies a ready-to-paste agent prompt with the file's absolute path, home-relative path, and filename for fallback search. It suggests delegating analysis to a low-cost subagent when available, saving the cleaned transcript separately and returning a short summary with its file path. Agents need access to your Mac's files; otherwise the prompt asks you to attach the transcript.
+The panel shows your **10 latest recordings**, each with two actions. **Share with agent** copies a ready-to-paste agent prompt with the file's absolute path, home-relative path, and filename for fallback search. It suggests delegating analysis to a low-cost subagent when available, saving the cleaned transcript separately and returning a short summary with its file path. Agents need access to your Mac's files; otherwise the prompt asks you to attach the transcript.
 
-The copy icons beside **Audio** and **Text** copy their file paths. **Open folder** opens Finder.
+**Show in Finder** reveals the recording's audio and transcript together in their folder. **Open folder** opens the recordings folder.
 
 Each recording shows its start time and full date. The panel fits the available screen height. Scroll the recent recordings to reach older files; the recording controls and folder button stay visible.
 

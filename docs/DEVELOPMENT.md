@@ -90,6 +90,10 @@ with a fresh size.
 Recording dates come from the start timestamp in app-generated filenames,
 falling back to filesystem dates for renamed/imported files. Time is the primary
 label; the full date is a secondary label. Only active transcription adds a status.
+Each row has two actions: the prominent Share with agent clipboard button and
+the secondary Show in Finder button. Finder selects the audio and transcript
+together (only audio if no transcript exists). Separate file-open/path-copy
+buttons are omitted; file operations are handled in Finder.
 
 ## Agent handoff
 
@@ -102,7 +106,7 @@ The task suggests a low-cost subagent when available. The reader saves a cleaned
 transcript to a new Markdown file, preserves the original, and returns a concise
 summary with decisions, tasks, open questions, and the output path. Filename
 search is a fallback for moved files. Agents without access to the Mac must ask
-for an attachment. The Audio/Text copy buttons and context menus retain path copying.
+for an attachment.
 
 ## Checks
 

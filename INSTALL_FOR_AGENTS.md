@@ -36,7 +36,7 @@ in its parent Applications folder. Preserve all other apps' permissions.
 - Clicking the menu bar microphone opens the recording panel.
 - Start recording, then Stop & save. The chosen folder receives an .m4a file.
 - With a valid Groq key and internet access, a timestamped .txt transcript appears beside it.
-- Audio/Text open the corresponding files; their copy icons copy file paths. Share with agent copies an agent prompt with local file references and filename fallback, without the transcript body.
+- Share with agent copies an agent prompt with local file references and filename fallback, without the transcript body. Show in Finder reveals that recording's audio and transcript together.
 - Open folder opens the selected folder in Finder.
 
 Do not move or delete existing recordings to perform these checks.

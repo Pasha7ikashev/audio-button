@@ -49,10 +49,6 @@ struct MicrophoneChoice: Identifiable {
     var finishSetup: () -> Void = {}
     private var copySequence = 0
 
-    func copy(_ url: URL, label: String) {
-        copyToClipboard(url.path, feedback: "\(label) path copied")
-    }
-
     func copyAgentPrompt(_ transcript: URL) {
         copyToClipboard(AgentHandoffPrompt.make(for: transcript), feedback: "Agent prompt copied")
     }
@@ -198,9 +194,6 @@ struct RecordingPanel: View {
                 if !model.copied.isEmpty {
                     Text(model.copied).font(.system(size: 11)).foregroundStyle(.secondary)
                 }
-                Button { model.copy(model.folder, label: "Folder") } label: {
-                    Image(systemName: "doc.on.doc")
-                }.buttonStyle(.plain).help("Copy folder path").accessibilityLabel("Copy folder path")
             }
         }.padding(18).frame(width: 430, height: model.panelHeight)
             .background(Color(nsColor: .windowBackgroundColor))
@@ -239,31 +232,36 @@ private struct RecordingRow: View {
     let recording: RecentRecording
     @ObservedObject var model: AppViewModel
     var body: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(timestamp)
-                    .font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                Text(recordingDate)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
                 if model.transcribingPath == recording.audio.path {
                     Text("Transcribing…").font(.system(size: 10)).foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
-                FileButtons(title: "Audio", symbol: "play.fill", url: recording.audio, model: model)
-                FileButtons(title: "Text", symbol: "doc.text", url: recording.transcript, model: model)
             }
-            HStack {
-                Text(recordingDate)
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                Spacer(minLength: 0)
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 8) {
                 Button {
                     if let transcript = recording.transcript { model.copyAgentPrompt(transcript) }
                 } label: {
                     Label("Share with agent", systemImage: "square.and.arrow.up")
-                }.buttonStyle(.bordered).controlSize(.small).tint(.indigo)
+                        .font(.system(size: 12, weight: .medium))
+                }.buttonStyle(.borderedProminent).controlSize(.small).tint(.indigo)
                     .disabled(recording.transcript == nil)
-                    .help("Copy agent prompt with transcript file link")
+                    .help(recording.transcript == nil ? "Available when the transcript is ready"
+                        : "Copy agent prompt with transcript file link")
                     .accessibilityLabel("Share with agent")
+                Button("Show in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting(
+                        [recording.audio, recording.transcript].compactMap { $0 })
+                }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .help("Reveal the audio and transcript in their folder")
+                    .accessibilityLabel("Show in Finder")
             }
-        }.padding(.horizontal, 12).frame(height: 74)
+        }.padding(.horizontal, 14).frame(height: 82)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
             .help(recording.audio.lastPathComponent)
     }
@@ -278,35 +276,6 @@ private struct RecordingRow: View {
         formatter.locale = Locale(identifier: "en_GB")
         formatter.dateFormat = "EEE, d MMM yyyy"
         return formatter.string(from: recording.date)
-    }
-}
-
-private struct FileButtons: View {
-    let title: String
-    let symbol: String
-    let url: URL?
-    @ObservedObject var model: AppViewModel
-    var body: some View {
-        HStack(spacing: 7) {
-            Button {
-                if let url { NSWorkspace.shared.open(url) }
-            } label: {
-                Label(title, systemImage: symbol).font(.system(size: 11))
-            }.buttonStyle(.plain).help("Open \(title.lowercased())")
-                .accessibilityLabel("Open \(title.lowercased())")
-            Button {
-                if let url { model.copy(url, label: title) }
-            } label: {
-                Image(systemName: "doc.on.doc").font(.system(size: 11))
-            }.buttonStyle(.plain).help("Copy \(title.lowercased()) path")
-                .accessibilityLabel("Copy \(title.lowercased()) path")
-        }.foregroundStyle(url != nil ? Color.primary : Color.secondary.opacity(0.4))
-            .disabled(url == nil)
-            .contextMenu {
-                if let url {
-                    Button("Copy \(title.lowercased()) path") { model.copy(url, label: title) }
-                }
-            }
     }
 }
 
