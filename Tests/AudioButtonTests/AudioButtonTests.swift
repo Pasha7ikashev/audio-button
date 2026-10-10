@@ -43,6 +43,7 @@ class XCTestCase {
 final class AudioButtonTests: XCTestCase {
     private var root: URL!
     override func setUpWithError() throws {
+        MockGroqProtocol.responses = []
         root = FileManager.default.temporaryDirectory.appendingPathComponent("AudioButtonTests-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
@@ -228,6 +229,140 @@ final class AudioButtonTests: XCTestCase {
         try XCTAssertTrue(try String(contentsOf: result, encoding: .utf8).contains("Уже готово."))
     }
 
+    private let mixedBaseline = Data(#"{"text":"Так, проверка. Мне выключить.","segments":[{"start":0,"end":4.38,"text":"Так, проверка."},{"start":30,"end":32.02,"text":"Мне выключить."}]}"#.utf8)
+    private let mixedRecovery = Data(#"{"text":"A year ago. Це теж важливо.","segments":[{"start":1,"end":10,"text":"A year ago.","avg_logprob":-0.28,"no_speech_prob":0.09},{"start":11,"end":20,"text":"Це теж важливо.","avg_logprob":-0.3,"no_speech_prob":0.1}]}"#.utf8)
+
+    private func mixedFixture(silentGap: Bool = false, silentTail: Bool = false) throws -> URL {
+        let buffer = tone(440, seconds: 34.5)
+        if silentGap {
+            for channel in 0..<Int(buffer.format.channelCount) {
+                for frame in Int(4.38 * 48_000)..<Int(30 * 48_000) {
+                    buffer.floatChannelData![channel][frame] = 0
+                }
+            }
+        }
+        if silentTail {
+            for channel in 0..<Int(buffer.format.channelCount) {
+                for frame in Int(26 * 48_000)..<Int(30 * 48_000) {
+                    buffer.floatChannelData![channel][frame] = 0
+                }
+            }
+        }
+        let file = root.appendingPathComponent("mixed.m4a")
+        var output: AVAudioFile? = try AVAudioFile(forWriting: file, settings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000,
+            AVNumberOfChannelsKey: 2, AVEncoderBitRateKey: 128_000
+        ])
+        try output!.write(from: buffer)
+        output = nil
+        return file
+    }
+
+    private func mockedTranscriber() -> GroqTranscriber {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockGroqProtocol.self]
+        MockGroqProtocol.requests = 0
+        return GroqTranscriber(network: URLSession(configuration: configuration))
+    }
+
+    func testAudibleGapRecoversOtherLanguagesWithoutSplittingRecording() async throws {
+        let file = try mixedFixture()
+        let original = try Data(contentsOf: file)
+        let transcriber = mockedTranscriber()
+        MockGroqProtocol.responses = [(200, mixedBaseline), (200, mixedRecovery)]
+        let result = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+        XCTAssertEqual(MockGroqProtocol.requests, 2)
+        let saved = try JSONDecoder().decode(SavedTranscript.self,
+            from: Data(contentsOf: file.deletingPathExtension().appendingPathExtension("transcript.json")))
+        XCTAssertEqual(saved.segments.map(\.text), ["Так, проверка.", "A year ago.", "Це теж важливо.", "Мне выключить."])
+        XCTAssertEqual(saved.segments[1].start, 5.38, accuracy: 0.01)
+        XCTAssertEqual(saved.segments[2].start, 15.38, accuracy: 0.01)
+        XCTAssertTrue(saved.isPartial != true)
+        try XCTAssertTrue(try String(contentsOf: result, encoding: .utf8).contains("[00:00:15] Це теж важливо."))
+        try XCTAssertEqual(try Data(contentsOf: file), original)
+        try XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted(),
+            ["mixed.m4a", "mixed.transcript.json", "mixed.txt"])
+    }
+
+    func testSilentGapDoesNotTriggerAnotherUpload() async throws {
+        let file = try mixedFixture(silentGap: true)
+        let transcriber = mockedTranscriber()
+        MockGroqProtocol.responses = [(200, mixedBaseline)]
+        _ = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+        XCTAssertEqual(MockGroqProtocol.requests, 1)
+    }
+
+    func testRecoveryFailureKeepsPartialTextAndResumesCachedPrimary() async throws {
+        let file = try mixedFixture()
+        let transcriber = mockedTranscriber()
+        MockGroqProtocol.responses = [(200, mixedBaseline), (401, Data("private-error-body".utf8))]
+        do {
+            _ = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+            XCTFail("Expected recovery failure")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("partial transcript"))
+            XCTAssertFalse(error.localizedDescription.contains("private-error-body"))
+        }
+        let text = file.deletingPathExtension().appendingPathExtension("txt")
+        let partial = try String(contentsOf: text, encoding: .utf8)
+        XCTAssertTrue(partial.contains("Transcription incomplete"))
+        XCTAssertTrue(partial.contains("Так, проверка."))
+        XCTAssertTrue(partial.contains("Мне выключить."))
+        XCTAssertEqual(MockGroqProtocol.requests, 2)
+        MockGroqProtocol.responses = [(200, mixedRecovery)]
+        _ = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+        XCTAssertEqual(MockGroqProtocol.requests, 3)
+        let complete = try String(contentsOf: text, encoding: .utf8)
+        XCTAssertFalse(complete.contains("Transcription incomplete"))
+        XCTAssertTrue(complete.contains("A year ago."))
+    }
+
+    func testNoiseRecoveryRejectsLowConfidenceGuesses() async throws {
+        let file = try mixedFixture()
+        let transcriber = mockedTranscriber()
+        let guesses = Data(#"{"text":"Invented speech.","segments":[{"start":0,"end":4,"text":"Noise guess","no_speech_prob":0.95},{"start":5,"end":9,"text":"Low confidence guess","avg_logprob":-1.5},{"start":10,"end":15,"text":"Repetitive guess","compression_ratio":3.1}]}"#.utf8)
+        MockGroqProtocol.responses = [(200, mixedBaseline), (200, guesses)]
+        let result = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+        let text = try String(contentsOf: result, encoding: .utf8)
+        XCTAssertFalse(text.contains("guess"))
+        XCTAssertTrue(text.contains("Так, проверка."))
+    }
+
+    func testRecoveryDropsWordsInSilentTailEvenWithHighConfidence() async throws {
+        let file = try mixedFixture(silentTail: true)
+        let transcriber = mockedTranscriber()
+        let recovery = Data(#"{"text":"English. Okay.","segments":[{"start":1,"end":10,"text":"English."},{"start":21.62,"end":25.62,"text":"Okay.","avg_logprob":-0.2,"no_speech_prob":0.01}]}"#.utf8)
+        MockGroqProtocol.responses = [(200, mixedBaseline), (200, recovery)]
+        let result = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+        let text = try String(contentsOf: result, encoding: .utf8)
+        XCTAssertTrue(text.contains("English."))
+        XCTAssertFalse(text.contains("Okay."))
+        let windows = try GroqTranscriber.recoveryWindows(file: file,
+            segments: [.init(start: 0, end: 4.38, text: "RU"), .init(start: 30, end: 32.02, text: "RU")], duration: 34.5)
+        XCTAssertEqual(windows.count, 1)
+        XCTAssertLessThan(windows[0].end, 27.3)
+    }
+
+    func testLongGapUsesShortOverlappingWindowsAndCachesRecovery() async throws {
+        let file = try sampleFile(seconds: 70)
+        let windows = try GroqTranscriber.recoveryWindows(file: file,
+            segments: [.init(start: 0, end: 5, text: "Beginning"), .init(start: 65, end: 70, text: "End")], duration: 70)
+        XCTAssertEqual(windows, [TranscriptionWindow(start: 5, end: 36, coreStart: 5, coreEnd: 35),
+            TranscriptionWindow(start: 34, end: 65, coreStart: 35, coreEnd: 65)])
+        let transcriber = mockedTranscriber()
+        let baseline = Data(#"{"text":"Beginning End","segments":[{"start":0,"end":5,"text":"Beginning"},{"start":65,"end":70,"text":"End"}]}"#.utf8)
+        MockGroqProtocol.responses = [(200, baseline), (200, mixedRecovery), (401, Data())]
+        do { _ = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }; XCTFail("Expected recovery failure") }
+        catch {}
+        XCTAssertEqual(MockGroqProtocol.requests, 3)
+        MockGroqProtocol.responses = [(200, Data(#"{"text":"Later","segments":[{"start":2,"end":10,"text":"Later"}]}"#.utf8))]
+        let result = try await transcriber.transcribe(file: file, key: "fake-test-key") { _, _ in }
+        XCTAssertEqual(MockGroqProtocol.requests, 4)
+        let text = try String(contentsOf: result, encoding: .utf8)
+        XCTAssertEqual(text.components(separatedBy: "A year ago.").count, 2)
+        XCTAssertTrue(text.contains("[00:00:36] Later"))
+    }
+
     func testRecentRecordingsAreLimitedAndPairedWithText() throws {
         for index in 0..<12 {
             let file = root.appendingPathComponent(String(format: "recording-%02d.m4a", index))
@@ -319,14 +454,16 @@ final class MockGroqProtocol: URLProtocol, @unchecked Sendable {
     static var body = Data()
     static var requests = 0
     static var lastRequest: URLRequest?
+    static var responses: [(Int, Data)] = []
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         Self.requests += 1
         Self.lastRequest = request
-        let response = HTTPURLResponse(url: request.url!, statusCode: Self.status, httpVersion: "HTTP/1.1", headerFields: nil)!
+        let (status, body) = Self.responses.isEmpty ? (Self.status, Self.body) : Self.responses.removeFirst()
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.body)
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
@@ -348,6 +485,12 @@ final class MockGroqProtocol: URLProtocol, @unchecked Sendable {
             ("Groq success", { try await tests.testGroqSuccessSavesTextAndResumeCache() }),
             ("invalid API key", { try await tests.testInvalidKeyDoesNotLeakKeyAndPreservesAudio() }),
             ("resume without duplicate upload", { try await tests.testResumeUsesSavedResponseWithoutUploadingAgain() }),
+            ("recover omitted languages in one recording", { try await tests.testAudibleGapRecoversOtherLanguagesWithoutSplittingRecording() }),
+            ("silent gaps do not use extra API requests", { try await tests.testSilentGapDoesNotTriggerAnotherUpload() }),
+            ("recovery failure preserves partial transcript and resumes", { try await tests.testRecoveryFailureKeepsPartialTextAndResumesCachedPrimary() }),
+            ("noise recovery rejects low-confidence text", { try await tests.testNoiseRecoveryRejectsLowConfidenceGuesses() }),
+            ("recovery rejects invented words in a silent tail", { try await tests.testRecoveryDropsWordsInSilentTailEvenWithHighConfidence() }),
+            ("long gaps use short windows and reuse completed recovery", { try await tests.testLongGapUsesShortOverlappingWindowsAndCachesRecovery() }),
             ("latest ten recordings and transcripts", { try tests.testRecentRecordingsAreLimitedAndPairedWithText() }),
             ("key verification and errors", { try await tests.testKeyVerificationUsesAuthenticationAndFriendlyErrors() }),
             ("independent microphone and Mac audio meters", { try tests.testMetersUseSeparateRealSourceLevels() }),

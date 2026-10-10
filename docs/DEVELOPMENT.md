@@ -39,6 +39,29 @@ chunk is compressed to 128 kbps to remain below the upload limit. Completed
 responses are cached, so a retry can resume without uploading them again.
 Network errors, account limits, or a rejected key preserve the audio.
 
+After the first pass, uncovered intervals of at least 5 seconds are checked for
+audio presence (at least 1 second above -55 dBFS RMS). Audible intervals are sent
+again in windows of at most 30 seconds, with 1-second context overlaps inside
+the gap. Quiet leading/trailing stretches are trimmed with 1 second of context.
+No language is fixed, and no channel is transcribed separately. This
+recovers a confirmed case where a full Russian/English request omitted all of
+the quieter English audio, while the same interval alone was recognized.
+Word timestamps trim overlaps and preserve each word once. Recovery responses
+are cached by their audio frame bounds, so retries also reuse completed checks.
+
+The presence gate does not identify speech: music or noise can cause an extra
+request. Recovery segments with high no-speech probability (>= 0.6), low average
+log probability (< -1), or excessive compression ratio (> 2.4) are discarded.
+Returned segments are also checked against the original audio; spans with less
+than 1 second of audible audio (half the span for segments shorter than 2 seconds)
+are rejected to avoid adding words in a quiet tail.
+Already-recognized text remains available if a check fails, marked incomplete
+in the text and JSON until retry finishes. Successful empty checks do not add
+text. This is a fallback for missing spans, not full language-switch detection
+or diarization; short switches, overlapping speech, or wrongly recognized
+words within an existing segment can still be missed. Additional checks use
+the user's Groq quota. The saved audio remains one unchanged mixed file.
+
 The API key is saved once in a plaintext file under
 `~/Library/Application Support/local.pasha.AudioButton/groq-key` (mode 0600;
 its dedicated folder is mode 0700). It remains available after relaunches and
@@ -103,8 +126,8 @@ controls and footer remain visible. Screen geometry changes reopen the panel
 with a fresh size.
 
 Recording dates come from the start timestamp in app-generated filenames,
-falling back to filesystem dates for renamed/imported files. Time is the primary
-label; the full date is a secondary label. Only active transcription adds a status.
+falling back to filesystem dates for renamed/imported files. The full date and
+start time share a secondary line below the actions. Only active transcription adds a status.
 Each row has two actions: the prominent Share with agent clipboard button and
 the secondary Show in Finder button. Finder selects the audio and transcript
 together (only audio if no transcript exists). Separate file-open/path-copy
@@ -117,11 +140,14 @@ absolute path, home-relative path when applicable, and exact filename. It does
 not read or embed the transcript body. Paths are quoted as JSON strings to
 preserve spaces, Unicode, and quotes without shell interpolation.
 
-The task suggests a low-cost subagent when available. The reader saves a cleaned
-transcript to a new Markdown file, preserves the original, and returns a concise
-summary with decisions, tasks, open questions, and the output path. Filename
-search is a fallback for moved files. Agents without access to the Mac must ask
-for an attachment.
+Before reading, the task asks the user to choose full cleanup, a focused question,
+or a topic index unless a task was already provided. It suggests a low-cost,
+capable subagent to read the file and return only relevant findings and output
+paths, keeping the raw text out of the main agent's context. Full cleanup and
+indexing save a new Markdown file beside the original; a focused question does
+not automatically rewrite it. All modes preserve the original. Filename search
+is a fallback for moved files. Agents without access to the Mac must ask for an
+attachment.
 
 ## Checks
 
@@ -131,6 +157,9 @@ for an attachment.
 - Crash recovery, safe export failure, and empty captures.
 - API multipart requests, chunk boundaries, overlap deduplication, successful
   transcription, rejected keys, and resuming cached responses.
+- Recovery of omitted multilingual spans, silence without extra uploads,
+  low-confidence noise rejection, partial text after failure, and resuming
+  completed recovery windows without duplicate uploads.
 - The latest ten recordings and transcript pairing.
 - Key verification, friendly errors, credential privacy, and private local key storage.
 - Independent PCM source levels and meter normalization.

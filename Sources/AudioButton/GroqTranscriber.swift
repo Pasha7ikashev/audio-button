@@ -1,4 +1,5 @@
 import AVFoundation
+import Accelerate
 import Foundation
 import Darwin
 
@@ -61,6 +62,9 @@ struct TranscriptSegment: Codable, Equatable {
     var start: Double
     var end: Double
     var text: String
+    var avg_logprob: Double? = nil
+    var no_speech_prob: Double? = nil
+    var compression_ratio: Double? = nil
 }
 struct TranscriptWord: Codable {
     var start: Double
@@ -77,6 +81,20 @@ struct SavedTranscript: Codable {
     var audioFile: String
     var text: String
     var segments: [TranscriptSegment]
+    var isPartial: Bool? = nil
+}
+
+struct TranscriptionWindow: Equatable {
+    var start: Double
+    var end: Double
+    var coreStart: Double
+    var coreEnd: Double
+}
+
+private struct AudioActivity {
+    var start: Double
+    var end: Double
+    var seconds: Double
 }
 
 final class GroqTranscriber {
@@ -177,29 +195,145 @@ final class GroqTranscriber {
             let coreEnd = min(duration, Double(index + 1) * 600)
             let start = max(0, coreStart - 2)
             let end = min(duration, coreEnd + 2)
-            let responseFile = work.appendingPathComponent("\(index).json")
-            let response: GroqResponse
-            if FileManager.default.fileExists(atPath: responseFile.path) {
-                response = try JSONDecoder().decode(GroqResponse.self, from: Data(contentsOf: responseFile))
-            } else {
-                let audio = try await Task.detached(priority: .utility) {
-                    try Self.chunk(file: file, start: start, end: end,
-                        destination: work.appendingPathComponent("chunk.m4a"))
-                }.value
-                response = try await upload(audio: audio, key: key)
-                try JSONEncoder().encode(response).write(to: responseFile, options: .atomic)
-            }
+            let response = try await cachedResponse(file: file, key: key, start: start, end: end,
+                work: work, name: "\(index)")
             all += Self.segments(response, offset: start, coreStart: coreStart, coreEnd: coreEnd)
         }
+        // A multilingual model can omit a quieter language in a mixed recording.
+        // Recheck audible gaps independently, without a fixed language or source split.
+        let primary = all
+        let recovery = try await Task.detached(priority: .utility) {
+            try Self.recoveryWindows(file: file, segments: primary, duration: duration)
+        }.value
+        var result = try Self.save(all, for: file, partial: !recovery.isEmpty)
+        for (index, window) in recovery.enumerated() {
+            progress(total + index + 1, total + recovery.count)
+            do {
+                let name = "recovery-\(Int64((window.start * rate).rounded()))-\(Int64((window.end * rate).rounded()))"
+                var response = try await cachedResponse(file: file, key: key, start: window.start,
+                    end: window.end, work: work, name: name)
+                // Extra passes over noise must not turn low-confidence guesses into text.
+                response.segments = response.segments?.filter {
+                    ($0.no_speech_prob ?? 0) < 0.6 && ($0.avg_logprob ?? 0) >= -1 &&
+                        ($0.compression_ratio ?? 0) <= 2.4
+                }
+                let proposed = Self.segments(response, offset: window.start,
+                    coreStart: window.coreStart, coreEnd: window.coreEnd)
+                all += try await Task.detached(priority: .utility) {
+                    try Self.audibleSegments(proposed, file: file)
+                }.value
+                result = try Self.save(all, for: file, partial: index + 1 < recovery.count)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw RecorderError.message("Audio and a partial transcript are saved. Retry transcription to finish checking missing speech.\n" + error.localizedDescription)
+            }
+        }
+        try? FileManager.default.removeItem(at: work)
+        return result
+    }
+
+    private func cachedResponse(file: URL, key: String, start: Double, end: Double,
+                                work: URL, name: String) async throws -> GroqResponse {
+        let responseFile = work.appendingPathComponent(name + ".json")
+        if FileManager.default.fileExists(atPath: responseFile.path) {
+            return try JSONDecoder().decode(GroqResponse.self, from: Data(contentsOf: responseFile))
+        }
+        let audio = try await Task.detached(priority: .utility) {
+            try Self.chunk(file: file, start: start, end: end,
+                destination: work.appendingPathComponent("chunk.m4a"))
+        }.value
+        let response = try await upload(audio: audio, key: key)
+        try JSONEncoder().encode(response).write(to: responseFile, options: .atomic)
+        return response
+    }
+
+    private static func save(_ segments: [TranscriptSegment], for file: URL, partial: Bool) throws -> URL {
+        let all = segments.sorted { $0.start == $1.start ? $0.end < $1.end : $0.start < $1.start }
         let text = all.map { "[\(Self.timestamp($0.start))] \($0.text.trimmingCharacters(in: .whitespacesAndNewlines))" }
             .joined(separator: "\n\n")
         let result = file.deletingPathExtension().appendingPathExtension("txt")
-        let final = SavedTranscript(model: Self.model, audioFile: file.lastPathComponent, text: text, segments: all)
+        let final = SavedTranscript(model: Self.model, audioFile: file.lastPathComponent,
+            text: text, segments: all, isPartial: partial ? true : nil)
         try JSONEncoder().encode(final).write(
             to: file.deletingPathExtension().appendingPathExtension("transcript.json"), options: .atomic)
-        try (text.isEmpty ? "No speech detected.\n" : text + "\n").write(to: result, atomically: true, encoding: .utf8)
-        try? FileManager.default.removeItem(at: work)
+        let notice = partial ? "[Transcription incomplete — retry in Audio Button.]\n\n" : ""
+        try (notice + (text.isEmpty ? (partial ? "" : "No speech detected.\n") : text + "\n"))
+            .write(to: result, atomically: true, encoding: .utf8)
         return result
+    }
+
+    static func recoveryWindows(file: URL, segments: [TranscriptSegment], duration: Double) throws -> [TranscriptionWindow] {
+        let covered = segments.filter {
+            $0.start.isFinite && $0.end.isFinite && $0.end > $0.start &&
+                !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }.sorted { $0.start < $1.start }
+        var gaps: [(Double, Double)] = []
+        var cursor = 0.0
+        for segment in covered {
+            let start = max(0, min(duration, segment.start))
+            let end = max(0, min(duration, segment.end))
+            if start - cursor >= 5 { gaps.append((cursor, start)) }
+            cursor = max(cursor, end)
+        }
+        if duration - cursor >= 5 { gaps.append((cursor, duration)) }
+        guard !gaps.isEmpty else { return [] }
+        let input = try AVAudioFile(forReading: file, commonFormat: .pcmFormatFloat32, interleaved: false)
+        var windows: [TranscriptionWindow] = []
+        for (gapStart, gapEnd) in gaps {
+            var coreStart = gapStart
+            while coreStart < gapEnd {
+                let coreEnd = min(coreStart + 30, gapEnd)
+                if let activity = try audioActivity(input, start: coreStart, end: coreEnd),
+                   activity.seconds >= min(1, (coreEnd - coreStart) / 2) {
+                    // Keep context, but avoid uploading a long silent lead-in or tail.
+                    windows.append(TranscriptionWindow(start: max(max(gapStart, coreStart - 1), activity.start - 1),
+                        end: min(min(gapEnd, coreEnd + 1), activity.end + 1), coreStart: coreStart, coreEnd: coreEnd))
+                }
+                coreStart = coreEnd
+            }
+        }
+        return windows
+    }
+
+    private static func audibleSegments(_ segments: [TranscriptSegment], file: URL) throws -> [TranscriptSegment] {
+        guard !segments.isEmpty else { return [] }
+        let input = try AVAudioFile(forReading: file, commonFormat: .pcmFormatFloat32, interleaved: false)
+        return try segments.filter { segment in
+            guard let activity = try audioActivity(input, start: segment.start, end: segment.end) else { return false }
+            return activity.seconds >= min(1, (segment.end - segment.start) / 2)
+        }
+    }
+
+    private static func audioActivity(_ input: AVAudioFile, start: Double, end: Double) throws -> AudioActivity? {
+        let rate = input.processingFormat.sampleRate
+        input.framePosition = min(input.length, Int64((start * rate).rounded()))
+        var remaining = min(input.length - input.framePosition, Int64(((end - start) * rate).rounded()))
+        let capacity = AVAudioFrameCount((rate * 0.1).rounded())
+        let buffer = AVAudioPCMBuffer(pcmFormat: input.processingFormat, frameCapacity: capacity)!
+        var audibleSeconds = 0.0
+        var first: Double?
+        var last = start
+        while remaining > 0 {
+            let position = Double(input.framePosition) / rate
+            try input.read(into: buffer, frameCount: AVAudioFrameCount(min(Int64(capacity), remaining)))
+            guard buffer.frameLength > 0, let channels = buffer.floatChannelData else { break }
+            var level: Float = 0
+            for channel in 0..<Int(buffer.format.channelCount) {
+                var rms: Float = 0
+                vDSP_rmsqv(channels[channel], 1, &rms, vDSP_Length(buffer.frameLength))
+                level = max(level, rms)
+            }
+            // -55 dBFS is an audio-presence gate, not a claim of voice detection.
+            if level >= 0.00177828 {
+                if first == nil { first = position }
+                last = position + Double(buffer.frameLength) / rate
+                audibleSeconds += Double(buffer.frameLength) / rate
+            }
+            remaining -= Int64(buffer.frameLength)
+        }
+        guard let first else { return nil }
+        return AudioActivity(start: first, end: last, seconds: audibleSeconds)
     }
 
     static func chunk(file: URL, start: Double, end: Double, destination: URL) throws -> Data {
@@ -227,11 +361,16 @@ final class GroqTranscriber {
                          coreStart: Double, coreEnd: Double) -> [TranscriptSegment] {
         let segments = response.segments ?? [TranscriptSegment(start: 0, end: coreEnd - offset, text: response.text)]
         return segments.compactMap { segment in
+            guard segment.start.isFinite, segment.end.isFinite, segment.end > segment.start,
+                  !segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             let start = segment.start + offset
             let end = segment.end + offset
             if end <= coreStart || start >= coreEnd { return nil }
             if start >= coreStart && end <= coreEnd {
-                return TranscriptSegment(start: start, end: end, text: segment.text)
+                var shifted = segment
+                shifted.start = start
+                shifted.end = end
+                return shifted
             }
             if let words = response.words {
                 let kept = words.filter { word in

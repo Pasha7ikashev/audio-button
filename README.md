@@ -31,6 +31,8 @@ Hover over the menu bar microphone for a quick look. **Microphone** and **Mac au
 
 Audio is saved as `.m4a`, with a timestamped `.txt` and `.transcript.json` beside it. Settings are under the gear icon.
 
+Transcription detects the language automatically and keeps speech in its original language. The app also rechecks audible stretches that the first pass left without text, which can recover a quieter language in a mixed conversation. These checks may use additional Groq quota. Short language switches, overlapping voices, and very quiet speech can still be missed; the original audio is always kept.
+
 ## Ask your coding agent to install it
 
 > Install Audio Button from https://github.com/Pasha7ikashev/audio-button. Read INSTALL_FOR_AGENTS.md and preserve any existing recordings and settings.
