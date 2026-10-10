@@ -62,16 +62,31 @@ not required.
 Quit the app before installing an update. `package.sh` builds an Apple Silicon
 and Intel universal app, a DMG, a ZIP, and `SHA256SUMS.txt` in `dist/`.
 Set `AUDIO_BUTTON_SIGN_IDENTITY` to use an available signing identity; the
-default is ad-hoc signing. The release is not notarized.
+default uses `sign.py` and a persistent self-signed certificate. The release is not notarized.
 
 Microphone and Screen & System Audio Recording permissions are required by the
-capture APIs. No screen images are saved. An ad-hoc rebuild changes the code
-signature, so macOS may request capture permissions again. The saved Groq key is unaffected.
+capture APIs. No screen images are saved. Versions through 1.1.3 used ad-hoc signing and changed their designated
+requirement on rebuild. `sign.py` creates a private signing certificate once and
+reuses it, so the designated requirement identifies the certificate and bundle
+identifier rather than the current code hash. The saved Groq key is unaffected.
 After changing capture permissions, quit and reopen the app if necessary.
 macOS may retain the old code requirement while showing its toggle as enabled.
-If toggling and reopening fails after a rebuild, remove only Audio Button from
+When migrating from ad-hoc signing or changing signers, remove only Audio Button from
 Screen & System Audio Recording and add the installed app again, followed by
-Quit & Reopen. This refreshes the signature through the normal Settings UI.
+Quit & Reopen. This refreshes the identity through the normal Settings UI. The first microphone
+request for the new signer also needs approval. The app checks authorization status
+before requesting microphone access, distinguishes capture-permission errors from
+other failures, and clears a permission error on returning from Settings once the
+relevant API reports access.
+
+The signing key, certificate, keystore, and keystore password live in
+`~/Library/Application Support/Audio Button Signing/` (directory 0700, private files
+0600). Preserve this folder for future builds; never include it in source or the
+app bundle. The helper temporarily adds only its keystore to the user search list
+for signing and removes that entry afterwards without changing certificate trust
+or other keystores. It fails rather than silently falling back to ad-hoc signing.
+A separate source-building Mac creates its own identity; distributed releases
+carry the publisher certificate but no private key.
 
 The first launch has two setup steps: the user's own Groq key, then their
 recordings folder. Existing installations retain their configuration. Settings

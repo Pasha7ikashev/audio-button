@@ -6,6 +6,7 @@ swiftc -parse-as-library -swift-version 5 \
     Sources/AudioButton/AudioStorage.swift \
     Sources/AudioButton/GroqTranscriber.swift \
     Sources/AudioButton/RecordingLibrary.swift \
+    Sources/AudioButton/CapturePermission.swift \
     Tests/AudioButtonTests/AudioButtonTests.swift \
     -o .build/audio-button-tests
 .build/audio-button-tests

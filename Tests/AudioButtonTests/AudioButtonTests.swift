@@ -1,6 +1,7 @@
 import AVFoundation
 // A standalone harness works with Command Line Tools; full Xcode is not required.
 import Foundation
+import ScreenCaptureKit
 
 private var assertionFailures = 0
 func XCTFail(_ message: String, file: StaticString = #file, line: UInt = #line) {
@@ -304,6 +305,13 @@ final class AudioButtonTests: XCTestCase {
         XCTAssertGreaterThan(RecordingLibrary.meterLevel(0.2), RecordingLibrary.meterLevel(0.02))
         try session.finish(at: 1.1)
     }
+
+    func testOnlyScreenCaptureDenialRequestsPermissions() {
+        let denial = SCStreamError.Code.userDeclined.rawValue
+        XCTAssertTrue(CapturePermission.isSystemAudioDenial(NSError(domain: SCStreamErrorDomain, code: denial)))
+        XCTAssertFalse(CapturePermission.isSystemAudioDenial(NSError(domain: SCStreamErrorDomain, code: -3802)))
+        XCTAssertFalse(CapturePermission.isSystemAudioDenial(NSError(domain: NSOSStatusErrorDomain, code: denial)))
+    }
 }
 
 final class MockGroqProtocol: URLProtocol, @unchecked Sendable {
@@ -343,7 +351,8 @@ final class MockGroqProtocol: URLProtocol, @unchecked Sendable {
             ("latest ten recordings and transcripts", { try tests.testRecentRecordingsAreLimitedAndPairedWithText() }),
             ("key verification and errors", { try await tests.testKeyVerificationUsesAuthenticationAndFriendlyErrors() }),
             ("independent microphone and Mac audio meters", { try tests.testMetersUseSeparateRealSourceLevels() }),
-            ("persistent private key file without system prompts", { try tests.testLocalKeyPersistsWithPrivatePermissions() })
+            ("persistent private key file without system prompts", { try tests.testLocalKeyPersistsWithPrivatePermissions() }),
+            ("capture failures distinguish denied access from other errors", { tests.testOnlyScreenCaptureDenialRequestsPermissions() })
         ]
         for (name, run) in cases {
             let before = assertionFailures

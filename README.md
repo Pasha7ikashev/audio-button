@@ -9,7 +9,7 @@ A small Mac menu bar app. Record your microphone and Mac audio together, then ge
 [Download the latest release](https://github.com/Pasha7ikashev/audio-button/releases/latest).
 Open the DMG, drag **Audio Button** into **Applications**, then open it.
 
-This beta is not notarized. macOS may ask you to allow it in **System Settings → Privacy & Security → Open Anyway**. Keep Gatekeeper enabled.
+This beta uses a persistent self-signed certificate and is not notarized. macOS may ask you to allow it in **System Settings → Privacy & Security → Open Anyway**. Keep Gatekeeper enabled.
 
 1. Click **Get a free Groq key**, sign up, create an API key, and paste it into the app.
 2. Choose where to save your files. You're ready.
@@ -19,9 +19,9 @@ Groq offers a [free plan with usage limits](https://console.groq.com/docs/rate-l
 ## Use
 
 Click the microphone in the menu bar → **Start recording** → **Stop & save**.
-On your first recording, allow microphone and screen/system audio access. No video is recorded. Headphones work; they also avoid microphone echo from speakers.
+On your first recording, allow microphone and screen/system audio access. Upgrading from version 1.1.3 or earlier requires a one-time permission refresh; see [installation notes](INSTALL_FOR_AGENTS.md#capture-permission-after-an-update). No video is recorded. Headphones work; they also avoid microphone echo from speakers.
 
-The panel shows your **10 latest recordings**, each with two actions. **Share with agent** copies a ready-to-paste agent prompt with the file's absolute path, home-relative path, and filename for fallback search. It suggests delegating analysis to a low-cost subagent when available, saving the cleaned transcript separately and returning a short summary with its file path. Agents need access to your Mac's files; otherwise the prompt asks you to attach the transcript.
+The panel shows your **10 latest recordings**, with the date and start time below each row's two actions. **Share with agent** copies a ready-to-paste prompt with the file's absolute path, home-relative path, and filename for fallback search. Before reading the file, the agent asks whether you want a full cleanup, an answer to a specific question, or a topic index, unless you already gave it a task. It suggests delegating reading and analysis to a capable, low-cost subagent when available, keeping the raw transcript out of the main session. Agents need access to your Mac's files; otherwise the prompt asks you to attach the transcript.
 
 **Show in Finder** reveals the recording's audio and transcript together in their folder. **Open folder** opens the recordings folder.
 

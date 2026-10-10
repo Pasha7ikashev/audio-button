@@ -29,6 +29,7 @@ enum AudioButtonMain {
     private var quitting = false
     private var saveError: String?
     private var captureError: String?
+    private var capturePermission: CapturePermission?
     private var transcribing: URL?
     private var transcriptionProgress = ""
     private var lastTranscript: URL?
@@ -100,6 +101,13 @@ enum AudioButtonMain {
         if UserDefaults.standard.bool(forKey: "setupCompleted") { showPanel() }
         else { configureGroq() }
         return true
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        guard state == .idle, let permission = capturePermission, permission.isAuthorized else { return }
+        capturePermission = nil
+        captureError = nil
+        updateIcon()
     }
 
     private func installApplicationMenu() {
@@ -251,6 +259,7 @@ enum AudioButtonMain {
         state = .starting
         saveError = nil
         captureError = nil
+        capturePermission = nil
         updateIcon()
         Task { @MainActor in
             do {
@@ -267,6 +276,7 @@ enum AudioButtonMain {
             } catch {
                 state = .idle
                 captureError = error.localizedDescription
+                capturePermission = error as? CapturePermission
                 updateIcon()
                 showPanel()
                 if quitting { NSApp.reply(toApplicationShouldTerminate: true) }
@@ -382,7 +392,7 @@ enum AudioButtonMain {
             Int(Date().timeIntervalSince(startedAt ?? Date())) % 60)
         model.transcribingPath = transcribing?.path
         model.progress = transcriptionProgress
-        model.needsPermission = captureError?.hasPrefix("Allow Audio Button") == true
+        model.needsPermission = capturePermission != nil
         model.error = captureError ?? (saveError != nil ? "Audio couldn't be saved. Recover it from Settings."
             : transcriptionError != nil ? "Audio saved. Transcription needs attention." : nil
         )
@@ -511,7 +521,7 @@ enum AudioButtonMain {
         updateIcon()
     }
     @objc private func openPermissions() {
-        let section = captureError?.contains("microphone") == true ? "Privacy_Microphone" : "Privacy_ScreenCapture"
+        let section = capturePermission?.settingsSection ?? "Privacy_ScreenCapture"
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?" + section)!)
     }
     @objc private func help() {

@@ -232,18 +232,8 @@ private struct RecordingRow: View {
     let recording: RecentRecording
     @ObservedObject var model: AppViewModel
     var body: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(timestamp)
-                    .font(.system(size: 14, weight: .semibold)).monospacedDigit()
-                Text(recordingDate)
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
-                if model.transcribingPath == recording.audio.path {
-                    Text("Transcribing…").font(.system(size: 10)).foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 16) {
                 Button {
                     if let transcript = recording.transcript { model.copyAgentPrompt(transcript) }
                 } label: {
@@ -254,12 +244,21 @@ private struct RecordingRow: View {
                     .help(recording.transcript == nil ? "Available when the transcript is ready"
                         : "Copy agent prompt with transcript file link")
                     .accessibilityLabel("Share with agent")
+                Spacer(minLength: 0)
                 Button("Show in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting(
                         [recording.audio, recording.transcript].compactMap { $0 })
                 }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary)
                     .help("Reveal the audio and transcript in their folder")
                     .accessibilityLabel("Show in Finder")
+            }
+            HStack(spacing: 8) {
+                Text("\(recordingDate) · \(timestamp)")
+                    .font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if model.transcribingPath == recording.audio.path {
+                    Text("Transcribing…").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
             }
         }.padding(.horizontal, 14).frame(height: 82)
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))

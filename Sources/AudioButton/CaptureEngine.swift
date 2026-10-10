@@ -37,9 +37,11 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
             throw RecorderError.message("Choose at least one audio source.")
         }
         if options.microphone {
-            let allowed = await AVCaptureDevice.requestAccess(for: .audio)
-            guard allowed else {
-                throw RecorderError.message("Allow Audio Button to use the microphone in macOS Settings → Privacy & Security → Microphone.")
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized: break
+            case .notDetermined:
+                guard await AVCaptureDevice.requestAccess(for: .audio) else { throw CapturePermission.microphone }
+            default: throw CapturePermission.microphone
             }
         }
         if let deviceID = options.microphoneDeviceID, options.microphone,
@@ -50,7 +52,8 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         } catch {
-            throw RecorderError.message("Allow Audio Button in macOS Settings → Privacy & Security → Screen & System Audio Recording.")
+            if CapturePermission.isSystemAudioDenial(error) { throw CapturePermission.systemAudio }
+            throw RecorderError.message("Could not access Mac audio: " + error.localizedDescription)
         }
         guard let display = content.displays.first else {
             throw RecorderError.message("macOS could not provide system audio access: no active display was found.")
@@ -97,6 +100,7 @@ final class CaptureEngine: NSObject, SCStreamOutput, SCStreamDelegate, @unchecke
                 }
                 session = nil
             }
+            if CapturePermission.isSystemAudioDenial(error) { throw CapturePermission.systemAudio }
             throw error
         }
     }

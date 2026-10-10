@@ -25,7 +25,11 @@ else
 fi
 cp Info.plist "$app_path/Contents/Info.plist"
 cp Resources/AppIcon.icns "$app_path/Contents/Resources/AppIcon.icns"
-codesign --force --sign "${AUDIO_BUTTON_SIGN_IDENTITY:--}" --identifier local.pasha.AudioButton "$app_path"
+if [[ -n "${AUDIO_BUTTON_SIGN_IDENTITY:-}" ]]; then
+    codesign --force --sign "$AUDIO_BUTTON_SIGN_IDENTITY" --identifier local.pasha.AudioButton "$app_path"
+else
+    python3 sign.py "$app_path"
+fi
 print -r -- "$app_path"
 if $install_app; then
     install_path="$HOME/Applications/Audio Button.app"
