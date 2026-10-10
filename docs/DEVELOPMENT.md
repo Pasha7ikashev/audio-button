@@ -140,14 +140,30 @@ absolute path, home-relative path when applicable, and exact filename. It does
 not read or embed the transcript body. Paths are quoted as JSON strings to
 preserve spaces, Unicode, and quotes without shell interpolation.
 
-Before reading, the task asks the user to choose full cleanup, a focused question,
-or a topic index unless a task was already provided. It suggests a low-cost,
-capable subagent to read the file and return only relevant findings and output
-paths, keeping the raw text out of the main agent's context. Full cleanup and
-indexing save a new Markdown file beside the original; a focused question does
-not automatically rewrite it. All modes preserve the original. Filename search
-is a fallback for moved files. Agents without access to the Mac must ask for an
-attachment.
+Before reading, the task asks the user to choose a summary, a focused question,
+or a topic index unless a task was already provided. Every mode first requires
+preparation of the full transcript in a separate `.cleaned.md` file beside the
+original. When subagents are supported, a low-cost, capable subagent performs
+this step and returns only the saved path, a brief topic/time index, and important
+uncertainties. The main session waits for the saved file and then reads or
+delegates analysis of that prepared version. Without subagent support, the
+receiving agent explains the limitation and performs the same preparation.
+
+The receiving session supplies a brief relevant project context it already
+knows, plus a few relevant glossary/overview file paths when available. Context
+is optional and is used for plausible spelling corrections, not to invent
+meeting content or participant identities. Uncertain corrections retain the
+original wording in an uncertainty note. Speaker labels are added only when
+supported; otherwise speakers stay unknown. Existing timestamps, chronology,
+meaningful content, numbers, qualifications, and original languages are kept.
+The prepared file is a full edited transcript, not just a summary.
+
+A project copy is saved only when requested, using the named project's
+conventions or the user's chosen destination. A missing destination is queried
+only when the user requested such a copy. All modes preserve the raw original.
+Filename search is a fallback for moved files. Agents without access to the
+Mac must ask for an attachment. The app copies the prompt; it does not execute
+subagents or project-file operations itself.
 
 ## Checks
 
