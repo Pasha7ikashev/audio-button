@@ -17,6 +17,10 @@ enum RecordingLibrary {
               let files = try? FileManager.default.contentsOfDirectory(at: folder,
                 includingPropertiesForKeys: [.isRegularFileKey, .creationDateKey, .contentModificationDateKey],
                 options: [.skipsHiddenFiles]) else { return [] }
+        let timestampFormatter = DateFormatter()
+        timestampFormatter.locale = Locale(identifier: "en_US_POSIX")
+        timestampFormatter.calendar = Calendar(identifier: .gregorian)
+        timestampFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         return files.compactMap { file -> RecentRecording? in
             guard file.pathExtension.lowercased() == "m4a",
                   let attributes = try? file.resourceValues(forKeys:
@@ -24,8 +28,11 @@ enum RecordingLibrary {
                   attributes.isRegularFile == true else { return nil }
             let text = file.deletingPathExtension().appendingPathExtension("txt")
             let transcript = FileManager.default.fileExists(atPath: text.path) ? text : nil
+            // Export creates the final file when recording stops. App filenames
+            // retain its start time; renamed/imported files use filesystem dates.
+            let started = timestampFormatter.date(from: String(file.deletingPathExtension().lastPathComponent.prefix(19)))
             return RecentRecording(audio: file, transcript: transcript,
-                date: attributes.creationDate ?? attributes.contentModificationDate ?? .distantPast)
+                date: started ?? attributes.creationDate ?? attributes.contentModificationDate ?? .distantPast)
         }.sorted {
             if $0.date == $1.date { return $0.audio.lastPathComponent > $1.audio.lastPathComponent }
             return $0.date > $1.date

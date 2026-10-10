@@ -31,6 +31,7 @@ struct MicrophoneChoice: Identifiable {
     @Published var macAudioLevel = 0.0
     @Published var microphoneSignal = "Ready"
     @Published var macAudioSignal = "Ready"
+    @Published var panelHeight: CGFloat = 580
     var selectMicrophone: (String) -> Void = { _ in }
     var changeSources: (Bool, Bool) -> Void = { _, _ in }
     var pinPanel: () -> Void = {}
@@ -72,7 +73,7 @@ struct RecordingPanel: View {
     @ObservedObject var model: AppViewModel
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             HStack(spacing: 10) {
                 Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 34, height: 34)
                     .clipShape(RoundedRectangle(cornerRadius: 9))
@@ -177,7 +178,7 @@ struct RecordingPanel: View {
                     VStack(spacing: 8) {
                         Image(systemName: "waveform").font(.system(size: 28)).foregroundStyle(.tertiary)
                         Text("Your first recording goes here.").font(.system(size: 13)).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity).frame(height: 128)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         VStack(spacing: 6) {
@@ -185,9 +186,9 @@ struct RecordingPanel: View {
                                 RecordingRow(recording: recording, model: model)
                             }
                         }
-                    }.frame(height: min(CGFloat(model.recordings.count) * 80, 350))
+                    }.frame(maxHeight: .infinity)
                 }
-            }
+            }.frame(maxHeight: .infinity).layoutPriority(-1)
             Divider()
             HStack {
                 Button(action: model.openFolder) {
@@ -201,7 +202,7 @@ struct RecordingPanel: View {
                     Image(systemName: "doc.on.doc")
                 }.buttonStyle(.plain).help("Copy folder path").accessibilityLabel("Copy folder path")
             }
-        }.padding(20).frame(width: 430)
+        }.padding(18).frame(width: 430, height: model.panelHeight)
             .background(Color(nsColor: .windowBackgroundColor))
             .simultaneousGesture(TapGesture().onEnded { model.pinPanel() })
     }
@@ -242,13 +243,15 @@ private struct RecordingRow: View {
             HStack(spacing: 10) {
                 Text(timestamp)
                     .font(.system(size: 12, weight: .medium)).lineLimit(1)
+                if model.transcribingPath == recording.audio.path {
+                    Text("Transcribing…").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
                 Spacer(minLength: 0)
                 FileButtons(title: "Audio", symbol: "play.fill", url: recording.audio, model: model)
                 FileButtons(title: "Text", symbol: "doc.text", url: recording.transcript, model: model)
             }
             HStack {
-                Text(model.transcribingPath == recording.audio.path ? "Making transcript…"
-                    : recording.transcript != nil ? "Transcript ready" : "Audio saved")
+                Text(recordingDate)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Button {
@@ -267,7 +270,13 @@ private struct RecordingRow: View {
     private var timestamp: String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB")
-        formatter.dateFormat = Calendar.current.isDateInToday(recording.date) ? "'Today,' HH:mm:ss" : "MMM d, HH:mm:ss"
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: recording.date)
+    }
+    private var recordingDate: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_GB")
+        formatter.dateFormat = "EEE, d MMM yyyy"
         return formatter.string(from: recording.date)
     }
 }

@@ -36,6 +36,7 @@ enum AudioButtonMain {
     private var attemptedJobs = Set<String>()
     private let model = AppViewModel()
     private let popover = NSPopover()
+    private var panelController: NSHostingController<RecordingPanel>!
     private var setupWindow: SetupWindowController?
     private var pendingJobs: [String] {
         get { UserDefaults.standard.stringArray(forKey: "transcriptionJobs") ?? [] }
@@ -73,6 +74,8 @@ enum AudioButtonMain {
         engine.onFailure = { [weak self] error in self?.captureFailed(error) }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(willSleep),
             name: NSWorkspace.willSleepNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(screenParametersChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
         timer = Timer.scheduledTimer(timeInterval: 1, target: self, selector: #selector(tick),
             userInfo: nil, repeats: true)
         RunLoop.main.add(timer!, forMode: .common)
@@ -130,7 +133,11 @@ enum AudioButtonMain {
     private func configureInterface() {
         model.pinPanel = { [weak self] in self?.hoverPanel = false }
         popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: RecordingPanel(model: model))
+        panelController = NSHostingController(rootView: RecordingPanel(model: model))
+        // Size before showing: asynchronous SwiftUI intrinsic-size updates can
+        // otherwise expand an already-positioned popover beyond the screen edge.
+        panelController.sizingOptions = []
+        popover.contentViewController = panelController
         model.keyConfigured = GroqKeyStore.exists()
         model.autoTranscribe = UserDefaults.standard.object(forKey: "autoTranscribe") as? Bool != false
         model.microphoneEnabled = UserDefaults.standard.object(forKey: "microphoneEnabled") as? Bool != false
@@ -203,10 +210,33 @@ enum AudioButtonMain {
         model.microphones = CaptureEngine.microphones().map { MicrophoneChoice(id: $0.uniqueID, name: $0.localizedName) }
         updateIcon()
         guard !popover.isShown else { return }
+        sizePanel(for: button)
         hoverPanel = !activate
         if activate { NSApp.activate(ignoringOtherApps: true) }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         if activate { popover.contentViewController?.view.window?.makeKey() }
+    }
+
+    private func sizePanel(for button: NSStatusBarButton) {
+        let screen = button.window?.screen ?? NSScreen.main
+        let anchor = button.window?.convertToScreen(button.convert(button.bounds, to: nil))
+        let availableHeight = screen.map {
+            min(anchor?.minY ?? $0.visibleFrame.maxY, $0.visibleFrame.maxY)
+                - $0.visibleFrame.minY - 24 // Room for the arrow and window edges.
+        } ?? 580
+        model.panelHeight = max(1, min(model.recordings.isEmpty ? 440 : 580, availableHeight))
+        let size = NSSize(width: 430, height: model.panelHeight)
+        panelController.preferredContentSize = size
+        panelController.view.setFrameSize(size)
+        popover.contentSize = size
+        panelController.view.layoutSubtreeIfNeeded()
+    }
+
+    @objc private func screenParametersChanged() {
+        guard popover.isShown else { return }
+        let activate = !hoverPanel
+        popover.performClose(nil)
+        showPanel(activate: activate)
     }
 
     private func refreshRecordings() {

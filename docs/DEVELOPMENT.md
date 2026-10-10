@@ -77,6 +77,20 @@ The first launch has two setup steps: the user's own Groq key, then their
 recordings folder. Existing installations retain their configuration. Settings
 open only on request once setup is complete.
 
+## Panel layout
+
+The menu-bar panel uses an explicit content size before showing. The hosting
+controller's automatic sizing is disabled so later SwiftUI updates cannot move
+the top of an already-positioned popover offscreen. Its height is capped at 580
+points (440 for empty history), then limited to the space below the status item
+on that display's visible frame. The history scrolls in the remaining space;
+controls and footer remain visible. Screen geometry changes reopen the panel
+with a fresh size.
+
+Recording dates come from the start timestamp in app-generated filenames,
+falling back to filesystem dates for renamed/imported files. Time is the primary
+label; the full date is a secondary label. Only active transcription adds a status.
+
 ## Agent handoff
 
 Share with agent builds a short agent task containing the transcript's

@@ -25,6 +25,8 @@ The panel shows your **10 latest recordings**. **Audio** plays a recording and *
 
 The copy icons beside **Audio** and **Text** copy their file paths. **Open folder** opens Finder.
 
+Each recording shows its start time and full date. The panel fits the available screen height. Scroll the recent recordings to reach older files; the recording controls and folder button stay visible.
+
 Hover over the menu bar microphone for a quick look. **Microphone** and **Mac audio** are both on by default; choose a microphone or turn one source off before recording. Their separate live meters show the actual input level during recording. Sources stay locked until you stop.
 
 Audio is saved as `.m4a`, with a timestamped `.txt` and `.transcript.json` beside it. Settings are under the gear icon.
